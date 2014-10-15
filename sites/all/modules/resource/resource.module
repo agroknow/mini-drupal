@@ -1,0 +1,508 @@
+<?php
+
+/**
+ * @file
+ * Module for the Resource Entity - a starting point to create your own Entity
+ * and associated administration interface
+ */
+
+/**
+ * Implement hook_entity_info().
+ *
+ * We define two entities here - the actual entity that will hold our domain
+ * specific information and an entity that holds information about the different
+ * types of entities. See here: http://drupal.org/node/977380 for a discussion on this
+ * choice.
+ */
+function resource_entity_info() {
+    $return['resource'] = array(
+        'label' => t('Learning Resource'),
+        // The entity class and controller class extend the classes provided by the
+        // Entity API
+        'entity class' => 'Resource',
+        'controller class' => 'ResourceController',
+        'base table' => 'resource',
+        'fieldable' => TRUE,
+        'entity keys' => array(
+            'id' => 'resource_id',
+            'bundle' => 'type',
+        ),
+        // Bundles are defined by the resource types below
+        'bundles' => array(),
+        // Bundle keys tell the FieldAPI how to extract information from the bundle objects
+        'bundle keys' => array(
+            'bundle' => 'type',
+        ),
+        'label callback' => 'entity_class_label',
+        'uri callback' => 'entity_class_uri',
+        'creation callback' => 'resource_create',
+        'access callback' => 'resource_access',
+        'module' => 'resource',
+        // The information below is used by the ResourceUIController (which extends the EntityDefaultUIController)
+        'admin ui' => array(
+            'path' => 'admin/content/resources',
+            'file' => 'resource.admin.inc',
+            'controller class' => 'ResourceUIController',
+            'menu wildcard' => '%resource',
+        ),
+    );
+    // The entity that holds information about the entity types	  
+    $return['resource_type'] = array(
+        'label' => t('Learning Resource Type'),
+        'entity class' => 'ResourceType',
+        'controller class' => 'ResourceTypeController',
+        'base table' => 'resource_type',
+        'fieldable' => FALSE,
+        'bundle of' => 'resource',
+        'exportable' => TRUE,
+        'entity keys' => array(
+            'id' => 'id',
+            'name' => 'type',
+            'label' => 'label',
+        ),
+        'access callback' => 'resource_type_access',
+        'module' => 'resource',
+        // Enable the entity API's admin UI.
+        'admin ui' => array(
+            'path' => 'admin/structure/resource_types',
+            'file' => 'resource_type.admin.inc',
+            'controller class' => 'ResourceTypeUIController',
+        ),
+    );
+
+    return $return;
+}
+
+/**
+ * Implements hook_entity_info_alter().
+ *
+ * We are adding the info about the resource types via a hook to avoid a recursion
+ * issue as loading the resource types requires the entity info as well.
+ *
+ * @todo This needs to be improved
+ */
+function resource_entity_info_alter(&$entity_info) {
+    foreach (resource_get_types() as $type => $info) {
+        $entity_info['resource']['bundles'][$type] = array(
+            'label' => $info->label,
+            'admin' => array(
+                'path' => 'admin/structure/resource_types/manage/%resource_type',
+                'real path' => 'admin/structure/resource_types/manage/' . $type,
+                'bundle argument' => 4,
+                'access arguments' => array('administer resource types'),
+            ),
+        );
+    }
+}
+
+/**
+ * Implements hook_permission().
+ */
+function resource_permission() {
+    // We set up permisssions to manage entity types, manage all entities and the
+    // permissions for each individual entity
+    $permissions = array(
+        'administer resource types' => array(
+            'title' => t('Administer resource types'),
+            'description' => t('Create and delete fields for Learning Resource types, and set their permissions.'),
+        ),
+        'administer resources' => array(
+            'title' => t('Administer Learning Resource'),
+            'description' => t('Edit, Add and delete all Learning Resource'),
+        ),
+        'administer own resources' => array(
+            'title' => t('Administer own Learning Resource'),
+            'description' => t('Edit and delete your Learning Resource'),
+        ),
+        'add resources' => array(
+            'title' => t('Add new Learning Resource'),
+            'description' => t('Add new Learning Resource'),
+        ),
+        'administer same institution resources' => array(
+            'title' => t('Administer same institution Learning Resource'),
+            'description' => t('Edit and delete same institution Learning Resource'),
+        ),
+    );
+
+    //Generate permissions per resource 
+    foreach (resource_get_types() as $type) {
+        $type_name = check_plain($type->type);
+        $permissions += array(
+            "edit any $type_name resource" => array(
+                'title' => t('%type_name: Edit any Learning Resource', array('%type_name' => $type->label)),
+            ),
+            "view any $type_name resource" => array(
+                'title' => t('%type_name: View any Learning Resource', array('%type_name' => $type->label)),
+            ),
+        );
+    }
+    return $permissions;
+}
+
+/**
+ * Determines whether the given user has access to a resource.
+ *
+ * @param $op
+ *   The operation being performed. One of 'view', 'update', 'create', 'delete'
+ *   or just 'edit' (being the same as 'create' or 'update').
+ * @param $resource
+ *   Optionally a resource or a resource type to check access for. If nothing is
+ *   given, access for all resources is determined.
+ * @param $account
+ *   The user to check for. Leave it to NULL to check for the global user.
+ * @return boolean
+ *   Whether access is allowed or not.
+ */
+function resource_access($op, $resource = NULL, $account = NULL) { //echo "123-".$op."<br>";//die;
+    GLOBAL $user;
+//  print_r($resource); echo "456";
+//  echo "456";
+
+    if (user_access('administer resources', $account)) {
+        return TRUE;
+    } else {
+
+
+        if ($op == 'edit resource') {
+            if (user_access('administer own resources', $account) && $user->uid == $resource->uid) {
+                return TRUE;
+            }
+        }
+        if ($op == 'delete') {
+            if (user_access('administer own resources', $account) && $user->uid == $resource->uid) {
+                return TRUE;
+            }
+        }
+        if ($op == 'add') {
+            if (user_access('add resources', $account)) {
+                return TRUE;
+            }
+        }
+        if ($op == 'view') {
+            if ($resource->public == 1) {
+                return TRUE;
+            } else {
+                if (user_access('administer own resources', $account) && $user->uid == $resource->uid) {
+                    return TRUE;
+                } else {
+                    return FALSE;
+                }
+            }
+        }
+    }
+//  if (isset($resource) && $type_name = $resource->type) {
+//    $op = ($op == 'view') ? 'view' : 'edit';
+//    if (user_access("$op any $type_name resource", $account)) {
+//      return TRUE;
+//    }
+//  }
+    return FALSE;
+}
+
+/**
+ * Access callback for the entity API.
+ */
+function resource_type_access($op, $type = NULL, $account = NULL) {
+    return user_access('administer resource types', $account);
+}
+
+/**
+ * Gets an array of all resource types, keyed by the type name.
+ *
+ * @param $type_name
+ *   If set, the type with the given name is returned.
+ * @return ResourceType[]
+ *   Depending whether $type isset, an array of resource types or a single one.
+ */
+function resource_get_types($type_name = NULL) {
+    // entity_load will get the Entity controller for our resource entity and call the load
+    // function of that object - we are loading entities by name here.
+    $types = entity_load_multiple_by_name('resource_type', isset($type_name) ? array($type_name) : FALSE);
+    return isset($type_name) ? reset($types) : $types;
+}
+
+/**
+ * Menu argument loader; Load a resource type by string.
+ *
+ * @param $type
+ *   The machine-readable name of a resource type to load.
+ * @return
+ *   A resource type array or FALSE if $type does not exist.
+ */
+function resource_type_load($type) {
+    return resource_get_types($type);
+}
+
+/**
+ * Fetch a resource object. Make sure that the wildcard you choose 
+ * in the resource entity definition fits the function name here.
+ *
+ * @param $resource_id
+ *   Integer specifying the resource id.
+ * @param $reset
+ *   A boolean indicating that the internal cache should be reset.
+ * @return
+ *   A fully-loaded $resource object or FALSE if it cannot be loaded.
+ *
+ * @see resource_load_multiple()
+ */
+function resource_load($resource_id, $reset = FALSE) {
+    $resources = resource_load_multiple(array($resource_id), array(), $reset);
+    return reset($resources);
+}
+
+/**
+ * Load multiple resources based on certain conditions.
+ *
+ * @param $resource_ids
+ *   An array of resource IDs.
+ * @param $conditions
+ *   An array of conditions to match against the {resource} table.
+ * @param $reset
+ *   A boolean indicating that the internal cache should be reset.
+ * @return
+ *   An array of resource objects, indexed by resource_id.
+ *
+ * @see entity_load()
+ * @see resource_load()
+ */
+function resource_load_multiple($resource_ids = array(), $conditions = array(), $reset = FALSE) {
+    return entity_load('resource', $resource_ids, $conditions, $reset);
+}
+
+/**
+ * Deletes a resource.
+ */
+function resource_delete(Resource $resource) {
+    $resource->delete();
+}
+
+/**
+ * Delete multiple resources.
+ *
+ * @param $resource_ids
+ *   An array of resource IDs.
+ */
+function resource_delete_multiple(array $resource_ids) {
+    entity_get_controller('resource')->delete($resource_ids);
+}
+
+/**
+ * Create a resource object.
+ */
+function resource_create($values = array()) {
+    return entity_get_controller('resource')->create($values);
+}
+
+/**
+ * Saves a resource to the database.
+ *
+ * @param $resource
+ *   The resource object.
+ */
+function resource_save(Resource $resource) {
+    return $resource->save();
+}
+
+/**
+ * Saves a resource type to the db.
+ */
+function resource_type_save(ResourceType $type) {
+    $type->save();
+}
+
+/**
+ * Deletes a resource type from the db.
+ */
+function resource_type_delete(ResourceType $type) {
+    $type->delete();
+}
+
+/**
+ * URI callback for resources
+ */
+function resource_uri(Resource $resource) {
+    return array(
+        'path' => 'resource/' . $resource->resource_id,
+    );
+}
+
+/**
+ * Menu title callback for showing individual entities
+ */
+function resource_page_title(Resource $resource) {
+    return $resource->name;
+}
+
+/**
+ * Sets up content to show an individual resource
+ * @todo - get rid of drupal_set_title();
+ */
+function resource_page_view($resource, $view_mode = 'full') {
+    $controller = entity_get_controller('resource');
+    $content = $controller->view(array($resource->resource_id => $resource));
+    drupal_set_title($resource->name);
+    return $content;
+}
+
+/**
+ * Implements hook_views_api().
+ */
+function resource_views_api() {
+    return array(
+        'api' => 3,
+        'path' => drupal_get_path('module', 'resource') . '/views',
+    );
+}
+
+/**
+ * Implement hook_theme().
+ */
+function resource_theme() {
+    return array(
+        'resource_add_list' => array(
+            'variables' => array('content' => array()),
+            'file' => 'resource.admin.inc',
+        ),
+        'resource' => array(
+            'render element' => 'elements',
+            'template' => 'resource',
+        ),
+//        'resource_sample_data' => array(
+//            'variables' => array('resource_sample_data', 'resource' => NULL),
+//            'template' => 'resource-sample-data',
+//        ),
+    );
+}
+
+/**
+ * Implements hook_menu_local_tasks_alter().
+ */
+function resource_menu_local_tasks_alter(&$data, $router_item, $root_path) {
+    // Add action link 'admin/structure/resources/add' on 'admin/structure/resources'.
+    if ($root_path == 'admin/content/resources') {
+        $item = menu_get_item('admin/content/resources/add');
+        if ($item['access']) {
+            $data['actions']['output'][] = array(
+                '#theme' => 'menu_local_action',
+                '#link' => $item,
+            );
+        }
+    }
+}
+
+/**
+ * The class used for resource entities
+ */
+class Resource extends Entity {
+
+    public function __construct($values = array()) {
+        parent::__construct($values, 'resource');
+    }
+
+    protected function defaultLabel() {
+        return $this->name;
+    }
+
+    protected function defaultUri() {
+        return array('path' => 'resource/' . $this->resource_id);
+    }
+
+}
+
+/**
+ * The class used for resource type entities
+ */
+class ResourceType extends Entity {
+
+    public $type;
+    public $label;
+
+    public function __construct($values = array()) {
+        parent::__construct($values, 'resource_type');
+    }
+
+}
+
+/**
+ * The Controller for Resource entities
+ */
+class ResourceController extends EntityAPIController {
+
+    public function __construct($entityType) {
+        parent::__construct($entityType);
+    }
+
+    /**
+     * Create a resource - we first set up the values that are specific
+     * to our resource schema but then also go through the EntityAPIController
+     * function.
+     * 
+     * @param $type
+     *   The machine-readable type of the resource.
+     *
+     * @return
+     *   A resource object with all default fields initialized.
+     */
+    public function create(array $values = array()) {
+        // Add values that are specific to our Resource
+        $values += array(
+            'resource_id' => '',
+            'is_new' => TRUE,
+            'title' => '',
+            'created' => '',
+            'changed' => '',
+            'data' => '',
+        );
+
+        $resource = parent::create($values);
+        return $resource;
+    }
+
+    /**
+     * Overriding the buldContent function to add entity specific fields
+     */
+    public function buildContent($entity, $view_mode = 'full', $langcode = NULL, $content = array()) {
+        $content = parent::buildContent($entity, $view_mode, $langcode, $content);
+        $content['resource_sample_data'] = array(
+            '#markup' => theme('resource_sample_data', array('resource_sample_data' => check_plain($entity->data['sample_data']), 'resource' => $entity)),
+        );
+
+        return $content;
+    }
+
+}
+
+/**
+ * The Controller for Resource entities
+ */
+class ResourceTypeController extends EntityAPIControllerExportable {
+
+    public function __construct($entityType) {
+        parent::__construct($entityType);
+    }
+
+    /**
+     * Create a resource type - we first set up the values that are specific
+     * to our resource type schema but then also go through the EntityAPIController
+     * function.
+     * 
+     * @param $type
+     *   The machine-readable type of the resource.
+     *
+     * @return
+     *   A resource type object with all default fields initialized.
+     */
+    public function create(array $values = array()) {
+        // Add values that are specific to our Resource
+        $values += array(
+            'id' => '',
+            'is_new' => TRUE,
+            'data' => '',
+        );
+        $resource_type = parent::create($values);
+        return $resource_type;
+    }
+
+}
+

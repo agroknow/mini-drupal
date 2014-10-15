@@ -1,0 +1,21 @@
+name = Resource
+description = Provides entity functionality as an example to use in your own development projects
+core = 7.x
+
+dependencies[] = entity
+dependencies[] = views
+
+files[] = resource.admin.inc
+files[] = resource_type.admin.inc
+files[] = views/resource.views.inc
+files[] = views/resource_handler_link_field.inc
+files[] = views/resource_handler_delete_link_field.inc
+files[] = views/resource_handler_edit_link_field.inc
+files[] = views/resource_handler_resource_operations_field.inc
+
+; Information added by drupal.org packaging script on 2011-07-03
+version = "7.x-1.0-alpha2"
+core = "7.x"
+project = "resource"
+datestamp = "1309730820"
+

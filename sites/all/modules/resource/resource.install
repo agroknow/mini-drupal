@@ -1,0 +1,225 @@
+<?php
+
+/**
+ * @file
+ * Sets up the base table for our entity and a table to store information about
+ * the entity types.
+ */
+
+/**
+ * Implements hook_schema().
+ */
+function resource_schema() {
+    $schema = array();
+
+    $schema['resource'] = array(
+        'description' => 'The base table for resource entities.',
+        'fields' => array(
+            'resource_id' => array(
+                'description' => 'Primary Key: Identifier for a resource.',
+                'type' => 'serial',
+                'unsigned' => TRUE,
+                'not null' => TRUE,
+            ),
+            'type' => array(
+                'description' => 'The {resource_type}.type of this resource.',
+                'type' => 'varchar',
+                'length' => 255,
+                'not null' => TRUE,
+                'default' => '',
+            ),
+            'language' => array(
+                'description' => 'The language of the resource.',
+                'type' => 'varchar',
+                'length' => 32,
+                'not null' => TRUE,
+                'default' => '',
+            ),
+            'name' => array(
+                'description' => 'The name of the resource - a human-readable identifier.',
+                'type' => 'varchar',
+                'length' => 255,
+                'not null' => TRUE,
+                'default' => '',
+            ),
+            'created' => array(
+                'description' => 'The Unix timestamp when the resource was created.',
+                'type' => 'int',
+                'not null' => TRUE,
+                'default' => 0,
+            ),
+            'changed' => array(
+                'description' => 'The Unix timestamp when the resource was most recently saved.',
+                'type' => 'int',
+                'not null' => TRUE,
+                'default' => 0,
+            ),
+            'data' => array(
+                'type' => 'blob',
+                'not null' => FALSE,
+                'size' => 'big',
+                'serialize' => TRUE,
+                'description' => 'A serialized array of additional data.',
+            ),
+            'uid' => array(
+                'type' => 'int',
+                'not null' => TRUE,
+                'description' => 'User id connection',
+            ),
+            'public' => array(
+                'type' => 'int',
+                'not null' => FALSE,
+                'description' => 'If the resource is public',
+            ),
+        ),
+        'primary key' => array('resource_id'),
+        'indexes' => array(
+            'type' => array('type'),
+        ),
+    );
+
+    $schema['resource_type'] = array(
+        'description' => 'Stores information about defined resource types.',
+        'fields' => array(
+    'id' => array(
+        'type' => 'serial',
+        'not null' => TRUE,
+        'description' => 'Primary Key: Unique resource type identifier.',
+    ),
+    'type' => array(
+        'description' => 'The machine-readable name of this resource type.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+    ),
+    'label' => array(
+        'description' => 'The human-readable name of this resource type.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+    ),
+    'weight' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+        'size' => 'tiny',
+        'description' => 'The weight of this resource type in relation to others.',
+    ),
+    'data' => array(
+        'type' => 'text',
+        'not null' => FALSE,
+        'size' => 'big',
+        'serialize' => TRUE,
+        'description' => 'A serialized array of additional data related to this resource type.',
+    ),
+        ) + entity_exportable_schema_fields(),
+        'primary key' => array('id'),
+        'unique keys' => array(
+            'type' => array('type'),
+        ),
+    );
+
+    return $schema;
+}
+
+function resource_install() {
+
+    resource_create_default_roles();
+}
+
+/**
+ * create default user roles and give permissions
+ */
+function resource_create_default_roles() {
+    // Create a role for editor.
+    $value = 'resource editor';
+    $userrole = user_role_load_by_name($value);
+    if (!$userrole) {
+        $editor_role = new stdClass();
+        $editor_role->name = $value;
+        $editor_role->weight = 10;
+        user_role_save($editor_role);
+        user_role_grant_permissions($editor_role->rid, array(
+            'administer own resources',
+            'add resources',
+        ));
+    }else{
+        user_role_grant_permissions($userrole->rid, array(
+            'administer own resources',
+            'add resources',
+        ));
+        
+    }
+    
+    
+    $value = 'resource administrator';
+    $userrole = user_role_load_by_name($value);
+    if (!$userrole) {
+        $editor_role = new stdClass();
+        $editor_role->name = $value;
+        $editor_role->weight = 10;
+        user_role_save($editor_role);
+        user_role_grant_permissions($editor_role->rid, array(
+        'administer resources',
+        'administer resource types',
+        ));
+    }else{
+        user_role_grant_permissions($userrole->rid, array(
+        'administer resources',
+        'administer resource types',
+        ));
+        
+    }
+    
+    $value = 'resource validator';
+    $userrole = user_role_load_by_name($value);
+    if (!$userrole) {
+        $editor_role = new stdClass();
+        $editor_role->name = $value;
+        $editor_role->weight = 10;
+        user_role_save($editor_role);
+        user_role_grant_permissions($editor_role->rid, array(
+        'administer resources',
+
+        ));
+    }else{
+        user_role_grant_permissions($userrole->rid, array(
+        'administer resources',
+
+        ));
+        
+    }
+    
+//    $value = 'authenticated user';
+//    $userrole = user_role_load_by_name($value);
+//    user_role_grant_permissions($userrole->rid, array(
+//            'administer own resources',
+//            'add resources',
+//        ));
+    
+    
+//    
+//    
+//    
+//
+//    $editor_role = new stdClass();
+//    $editor_role->name = 'resource administrator';
+//    $editor_role->weight = 10;
+//    user_role_save($editor_role);
+//    user_role_grant_permissions($editor_role->rid, array(
+//        'administer resources',
+//        'administer resource types',
+//    ));
+//    $editor_role = new stdClass();
+//    $editor_role->name = 'resource validator';
+//    $editor_role->weight = 10;
+//    user_role_save($editor_role);
+//    user_role_grant_permissions($editor_role->rid, array(
+//        'administer resources',
+//    ));
+//    user_role_grant_permissions(2, array(
+//        'administer own resources',
+//        'add resources',
+//    ));
+}
